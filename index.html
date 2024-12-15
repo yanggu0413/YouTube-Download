@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube 下載器</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-2xl">
+        <h1 class="text-3xl font-bold text-center mb-8">YouTube 下載器</h1>
+
+        <!-- 輸入區域 -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="mb-4">
+                <label for="youtubeUrl" class="block text-gray-700 font-medium mb-2">YouTube 網址:</label>
+                <input type="text" id="youtubeUrl" 
+                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       placeholder="請輸入 YouTube 影片網址">
+            </div>
+            <button onclick="getVideoInfo()" 
+                    class="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                獲取影片資訊
+            </button>
+        </div>
+
+        <!-- 影片資訊區域 -->
+        <div id="videoInfo" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
+            <div class="flex flex-col md:flex-row gap-4 mb-4">
+                <div class="md:w-1/3">
+                    <img id="thumbnail" class="w-full rounded-lg" src="" alt="影片縮圖">
+                </div>
+                <div class="md:w-2/3">
+                    <h2 id="videoTitle" class="text-xl font-semibold mb-2"></h2>
+                    <p id="videoDuration" class="text-gray-600 mb-1"></p>
+                    <p id="videoViews" class="text-gray-600 mb-4"></p>
+                    
+                    <!-- 下載選項 -->
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-gray-700 font-medium mb-2">選擇下載格式:</label>
+                            <select id="downloadFormat" 
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="mp4">MP4 - 影片檔</option>
+                                <option value="mp3">MP3 - 音訊檔</option>
+                            </select>
+                        </div>
+                        <button onclick="startDownload()" 
+                                class="w-full bg-green-500 text-white py-2 px-4 rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
+                            開始下載
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 狀態訊息 -->
+        <div id="statusText" class="text-center text-gray-600 hidden"></div>
+        
+        <!-- 錯誤訊息 -->
+        <div id="errorMessage" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mt-4 hidden"></div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:5000/api';
+        
+        async function getVideoInfo() {
+            const urlInput = document.getElementById('youtubeUrl');
+            const videoInfo = document.getElementById('videoInfo');
+            const errorMessage = document.getElementById('errorMessage');
+            const statusText = document.getElementById('statusText');
+            
+            // 重置顯示狀態
+            errorMessage.classList.add('hidden');
+            statusText.classList.add('hidden');
+            videoInfo.classList.add('hidden');
+            
+            try {
+                // 驗證網址
+                if (!urlInput.value.trim()) {
+                    throw new Error('請輸入 YouTube 影片網址');
+                }
+                
+                // 顯示載入狀態
+                statusText.textContent = '正在獲取影片資訊...';
+                statusText.classList.remove('hidden');
+                
+                // 發送請求
+                const response = await fetch(`${API_BASE_URL}/video-info`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url: urlInput.value }),
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || '獲取影片資訊失敗');
+                }
+                
+                const data = await response.json();
+                
+                // 更新影片資訊
+                document.getElementById('thumbnail').src = data.thumbnails;
+                document.getElementById('videoTitle').textContent = data.title;
+                document.getElementById('videoDuration').textContent = `時長: ${formatDuration(data.duration)}`;
+                document.getElementById('videoViews').textContent = `觀看次數: ${formatNumber(data.views)}`;
+                
+                // 顯示影片資訊區域
+                videoInfo.classList.remove('hidden');
+                statusText.classList.add('hidden');
+                
+            } catch (error) {
+                errorMessage.textContent = error.message;
+                errorMessage.classList.remove('hidden');
+                statusText.classList.add('hidden');
+            }
+        }
+        
+        async function startDownload() {
+            const urlInput = document.getElementById('youtubeUrl');
+            const format = document.getElementById('downloadFormat').value;
+            const statusText = document.getElementById('statusText');
+            const errorMessage = document.getElementById('errorMessage');
+            
+            try {
+                // 重置錯誤訊息
+                errorMessage.classList.add('hidden');
+                
+                // 顯示下載狀態
+                statusText.textContent = '正在準備下載...';
+                statusText.classList.remove('hidden');
+                
+                // 構建下載 URL
+                const downloadUrl = `${API_BASE_URL}/download?url=${encodeURIComponent(urlInput.value)}&format=${format}`;
+                
+                // 使用 fetch 發起下載請求
+                const response = await fetch(downloadUrl);
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || '下載失敗');
+                }
+                
+                // 獲取文件 blob
+                const blob = await response.blob();
+                
+                // 創建下載連結
+                const downloadLink = document.createElement('a');
+                downloadLink.href = URL.createObjectURL(blob);
+                downloadLink.download = `youtube-download.${format}`;
+                
+                // 觸發下載
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+                
+                // 更新狀態
+                statusText.textContent = '下載完成！';
+                
+            } catch (error) {
+                errorMessage.textContent = error.message;
+                errorMessage.classList.remove('hidden');
+                statusText.classList.add('hidden');
+            }
+        }
+        
+        // 格式化時間長度
+        function formatDuration(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const remainingSeconds = seconds % 60;
+            
+            if (hours > 0) {
+                return `${hours}:${pad(minutes)}:${pad(remainingSeconds)}`;
+            }
+            return `${minutes}:${pad(remainingSeconds)}`;
+        }
+        
+        // 格式化數字（加上千分位符號）
+        function formatNumber(num) {
+            return new Intl.NumberFormat().format(num);
+        }
+        
+        // 補零函數
+        function pad(num) {
+            return num.toString().padStart(2, '0');
+        }
+    </script>
+</body>
+</html>
